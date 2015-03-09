@@ -1,0 +1,26 @@
+---- CREATING THE PARTS ----
+I began by defining all the particular polygons that made up the penguin as classes within "GLWidget.h". I separated each particular polygon into triangles and defined their vertices to make up the shape of the body, head, arm, and beak (top and bottom). The legs/feet and eye/screws were created using the predefined unit square and unit circle, respectively. While creating the parts, I did not take into consideration the sizes of each part in respect to other parts. To use the parts to create a proper penguin, I scaled each individual part (within the "paintGL" function in "GLWidget.cpp"). For this section, I pushed, drew, scaled, and popped every individual piece.
+
+
+---- TRANSLATING THE PIECES ----
+Though all the pieces of the penguin had been created and scaled, they were all at the origin point. Using the body as the base (or root), I translated each piece to its respective place after scaling the object. This same translation was used to translate the screws to the rotational joints.
+
+
+---- ANIMATING THE HEAD ----
+To animate the head, I realized more was required than simply pushing and popping each individual piece. As the eye (both the white and pupil) and beak (both the bottom and the top) needed to move in unison with the entire head, I realized I would need to translate and scale each piece within a single stack (for simplicity, as opposed to mathematically determining the rotation of each piece in respect to other pieces). I initially drew the scaled head to animate in a nodding motion. This required a translation before the rotation (as to modify the position of the rotational joint), which would be modified by a function every 50 milliseconds. This was then followed by another translation to move the head to its correct position in relation to its body. 
+
+However, as I wanted the eye and beak to rotate in the same motion, I did not immediately pop the head-polygon. Instead, I drew and translated the eye(s) and beak(s) to their respective locations, and scaled them. Unfortunately, my original scaling of each piece as defined in the first section was not sufficient due to earlier scales in the stack. As such, I scaled each item by de-scaling the previous scale before scaling (or rather, dividing my intended scaling by the previous scale). 
+
+This sequence of commands allowed the entire head to move in a nodding motion. Yet, I still required the mouth to open and close. This was relatively simple to do; I created a function to modify the translation of the lower beak up and down at an interval.
+
+
+---- ANIMATING THE REST ----
+The rest of the body was animated similarly to the head. The animations used were simply tweaked sine functions relative to the amount of movement each body part required. I put each animation into a separate function (all to be called by the timer function within "GLWidget.cpp") for easier future changes.
+
+The significant case besides the head were the feet, as the legs and feet needed to be animated together, while the feet needed its own animation. As such, I rotated the legs and feet together, then defined a hierarchical stack, in which only the feet were rotated. This allowed for the feet to be rotated on their own, while rotating along with the legs.
+
+Finally, the entire penguin defined was encapsulated into an over-arching stack which allowed the penguin to move along the x/y-axis. 
+
+
+---- DEFINING THE SLIDERS ----
+Each DOF was given its own slider within the window (defined by the constructor for the "MainWindow" class within "MainWindow.h"). Each slider corresponded with a function defined in "GLWidget.h", which would modify the variable controlling the rotational angle or translational position for each DOF.

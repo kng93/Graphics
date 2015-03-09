@@ -1,0 +1,399 @@
+/*************************************************************************
+    CSC418/2504, Winter 20l5
+    Assignment 1
+
+    Instructions:
+        See main.cpp for more instructions.
+
+        This file contains the class OpenGL portion of the main window.
+**************************************************************************/
+
+#include "GLWidget.h"
+#include <iostream>
+
+static QGLFormat createQGLFormat()
+{
+    // Return a QGLFormat object that tells Qt information about what
+    // OpenGL context we would like.
+    QGLFormat format(QGL::SampleBuffers);
+    if (supportsNewOpenGL())
+    {
+    // Choose a version of OpenGL that supports vertex array objects and
+    // tell it that we do not want support for deprecated functions.
+        format.setVersion(3, 3);
+        format.setProfile(QGLFormat::CoreProfile);
+    }
+    return format;
+}
+
+GLWidget::GLWidget(QWidget *parent)
+    : QGLWidget(createQGLFormat(), parent)
+    , m_is_animating(false)
+    , m_animation_frame(0)
+    , m_arm_angle(0)
+    , m_mouth_position(CLOSE_MOUTH)
+    , m_left_foot(-75)
+    , m_right_foot(-90)
+    , m_left_leg(-10)
+    , m_right_leg(5)
+    , m_move_x(0)
+    , m_move_y(0)
+    , m_pos_x(false)
+    , m_pos_y(false)
+{
+    // Start a timer that will call the timerEvent method every 50ms.
+    startTimer(/*milliseconds=*/50);
+}
+
+void GLWidget::initializeGL()
+{
+    m_gl_state.initializeGL();
+
+    // To aid with troubleshooting, print out which version of OpenGL we've
+    // told the driver to use.
+    std::cout << "Using OpenGL: " << glGetString(GL_VERSION) << std::endl;
+
+    // Copy the data for the shapes we'll draw into the video card's memory.
+    m_unit_square.initialize(m_gl_state.VERTEX_POSITION_SHADER_LOCATION);
+    m_pen_head.initialize(m_gl_state.VERTEX_POSITION_SHADER_LOCATION);
+    m_pen_body.initialize(m_gl_state.VERTEX_POSITION_SHADER_LOCATION);
+    m_pen_arm.initialize(m_gl_state.VERTEX_POSITION_SHADER_LOCATION);
+    m_beak_top.initialize(m_gl_state.VERTEX_POSITION_SHADER_LOCATION);
+    m_beak_bottom.initialize(m_gl_state.VERTEX_POSITION_SHADER_LOCATION);
+    m_unit_circle.initialize(
+    m_gl_state.VERTEX_POSITION_SHADER_LOCATION,
+    /*num_circle_segments=*/100);
+
+    // Tell OpenGL what color to fill the background to when clearing.
+    glClearColor(/*red=*/0.7f, /*green=*/0.7f, /*blue=*/0.9f, /*alpha=*/1.0f);
+
+}
+
+void GLWidget::resizeGL(int width, int height)
+{
+    // Respond to the window being resized by updating the viewport and
+    // projection matrices.
+
+    checkForGLErrors();
+
+    // Setup projection matrix for new window
+    m_gl_state.setOrthographicProjectionFromWidthAndHeight(width, height);
+
+    // Update OpenGL viewport and internal variables
+    glViewport(0, 0, width, height);
+    checkForGLErrors();
+}
+
+void GLWidget::closeMouth()
+{
+    // Open/close moth (-1 = open, -0.5 = closed)
+    if (m_animation_frame % 5 == 0)
+    {
+        if (m_mouth_position == OPEN_MOUTH)
+            m_mouth_position = CLOSE_MOUTH;
+        else
+            m_mouth_position = OPEN_MOUTH;
+    }
+}
+
+// Function for animating the head; called by timerEvent
+void GLWidget::nodHead(double joint_rot_speed)
+{
+    double joint_rot_t =
+        (sin(m_animation_frame * joint_rot_speed) + 1.0) / 2.0;
+    m_head_angle = joint_rot_t * HEAD_JOINT_MIN + (1 - joint_rot_t) * HEAD_JOINT_MAX;
+}
+
+// Function for animating the left leg; called by timerEvent
+void GLWidget::leftLeg(double joint_rot_speed)
+{
+    double joint_rot_t =
+        (sin(m_animation_frame * joint_rot_speed) + 1.0) / 2.0;
+    m_left_leg = joint_rot_t * LEFT_LEG_MIN + (1 - joint_rot_t) * LEFT_LEG_MAX;
+}
+
+// Function for animating the left foot; called by timerEvent
+void GLWidget::leftFoot(double joint_rot_speed)
+{
+    double joint_rot_t =
+        (sin(m_animation_frame * joint_rot_speed) + 1.0) / 2.0;
+    m_left_foot = joint_rot_t * LEFT_FOOT_MIN + (1 - joint_rot_t) * LEFT_FOOT_MAX;
+}
+
+// Function for animating the right leg; called by timerEvent
+void GLWidget::rightLeg(double joint_rot_speed)
+{
+    double joint_rot_t =
+        (sin(m_animation_frame * joint_rot_speed) + 1.0) / 2.0;
+    m_right_leg = joint_rot_t * RIGHT_LEG_MIN + (1 - joint_rot_t) * RIGHT_LEG_MAX;
+}
+
+// Function for animating the right foot; called by timerEvent
+void GLWidget::rightFoot(double joint_rot_speed)
+{
+    double joint_rot_t =
+        (sin(m_animation_frame * joint_rot_speed) + 1.0) / 2.0;
+    m_right_foot = joint_rot_t * RIGHT_FOOT_MIN + (1 - joint_rot_t) * RIGHT_FOOT_MAX;
+}
+
+// Function for animating the arm; called by timerEvent
+void GLWidget::moveArm(double joint_rot_speed)
+{
+    double joint_rot_t =
+        (sin(m_animation_frame * joint_rot_speed) + 1.0) / 2.0;
+    m_arm_angle = joint_rot_t * ARM_JOINT_MIN + (1 - joint_rot_t) * ARM_JOINT_MAX;
+}
+
+// Function for moving the penguin along the x axis; called by timerEvent
+void GLWidget::movex()
+{
+    if (m_move_x < MIN_X)
+        m_pos_x = true;
+    else if (m_move_x > MAX_X)
+        m_pos_x = false;
+
+    m_move_x = m_pos_x ? m_move_x + 1 : m_move_x - 1;
+}
+
+// Function for moving the penguin along the y axis; called by timerEvent
+void GLWidget::movey()
+{
+    if (m_move_y < MIN_Y)
+        m_pos_y = true;
+    else if (m_move_y > MAX_Y)
+        m_pos_y = false;
+
+    m_move_y = m_pos_y ? m_move_y + 1 : m_move_y - 1;
+}
+
+
+void GLWidget::timerEvent(QTimerEvent *)
+{
+    // Respond to a timer going off telling us to update the animation.
+    if (!m_is_animating)
+        return;
+
+    // increment the frame number.
+    m_animation_frame++;
+
+    // Update joint angles.
+    const double joint_rot_speed = 0.1;
+
+    // Open/Close mouth
+    closeMouth();
+    // Nod head
+    nodHead(joint_rot_speed);
+    // Move arm
+    moveArm(joint_rot_speed);
+    // Move left leg
+    leftLeg(joint_rot_speed);
+    // Move right leg
+    rightLeg(joint_rot_speed);
+    // Move feet
+    leftFoot(joint_rot_speed);
+    rightFoot(joint_rot_speed);
+
+    // Move the entire penguin along the x axis 
+    movex();
+    // Move the entire penguin along the y axis 
+    movey();
+
+    // Tell this widget to redraw itself.
+    update();
+}
+
+void GLWidget::paintGL()
+{
+    // This method gets called by the event handler to draw the scene, so
+    // this is where you need to build your scene -- make your changes and
+    // additions here.  All rendering happens in this function.
+
+    checkForGLErrors();
+
+    // Clear the screen with the background colour.
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);  
+
+    // Setup the model-view transformation matrix stack.
+    transformStack().loadIdentity();
+    checkForGLErrors();
+
+    const float HEAD_LENGTH = 40.0f;
+    const float HEAD_WIDTH = 50.0f;
+    const float BEAK_LENGTH = 10.0f;
+    const float BEAK_WIDTH = 15.0f;
+    const float ARM_LENGTH = 30.0f;
+    const float ARM_WIDTH = 22.0f;
+    const float LEG_LENGTH = 62.0f;
+    const float LEG_WIDTH = 22.0f;
+    const float FOOT_LENGTH = 70.0f;
+    const float FOOT_WIDTH = 18.0f;
+    const float SCREW_RAD = 4.0f;
+    const float EYE_RAD = 5.0f;
+    const float INNER_EYE_RAD = 3.0f;
+
+    // Note that successive transformations are applied *before* the previous
+    // ones.
+
+    // Whole penguin encapsulated to move and scale
+    transformStack().pushMatrix();
+        transformStack().scale(0.65, 0.65);
+        transformStack().translate(m_move_x, m_move_y);
+
+        //----------- Draw the penguin! -----------
+        // Draw the Head
+        transformStack().pushMatrix();
+            m_gl_state.setColor(0.0, 0.0, 0.0);
+            // Note 3.4*HEAD_LENGHT is the normal scaling
+            // The 1.3 is subtracted due to the earlier translation 
+            transformStack().translate(0, (3.4-1.3)*HEAD_LENGTH);
+            transformStack().rotateInDegrees(m_head_angle);
+            transformStack().scale(HEAD_WIDTH, HEAD_LENGTH);
+            transformStack().translate(-0.35, 1.3);
+            m_pen_head.draw();
+
+            // Draw the eye whites
+            m_gl_state.setColor(1.0, 1.0, 1.0);
+            transformStack().scale(EYE_RAD/HEAD_WIDTH, EYE_RAD/HEAD_LENGTH);
+            transformStack().translate(-2, -2);
+            m_unit_circle.draw();
+            
+            // Draw the eye pupil
+            m_gl_state.setColor(0, 0, 1.0);
+            transformStack().scale(INNER_EYE_RAD/EYE_RAD, INNER_EYE_RAD/EYE_RAD);
+            transformStack().translate(-0.5, 0);
+            m_unit_circle.draw();
+
+            // Draw the top beak
+            m_gl_state.setColor(1.0, 1.0, 0.0);
+            transformStack().scale(BEAK_WIDTH/INNER_EYE_RAD, BEAK_LENGTH/INNER_EYE_RAD);
+            transformStack().translate(-2.3, -2);
+            m_beak_top.draw();
+            
+            // Draw the bottom beak
+            m_gl_state.setColor(1.0, 1.0, 0.0);
+            transformStack().translate(0, m_mouth_position);
+            m_beak_bottom.draw();
+        transformStack().popMatrix();
+
+        // Draw the Body
+        transformStack().pushMatrix(); 
+            m_gl_state.setColor(1.0, 1.0, 1.0);
+            transformStack().scale(HEAD_WIDTH, HEAD_LENGTH);
+            m_pen_body.draw();
+        transformStack().popMatrix();
+
+        // Draw the Arm
+        transformStack().pushMatrix(); 
+            m_gl_state.setColor(0.0, 0.0, 0.0);
+            transformStack().translate(15, 40);
+            transformStack().rotateInDegrees(m_arm_angle);
+            transformStack().scale(ARM_WIDTH, ARM_LENGTH);
+            transformStack().translate(0, -1.2);
+            m_pen_arm.draw();
+        transformStack().popMatrix();
+        
+        // Draw the left leg
+        transformStack().pushMatrix();
+            transformStack().translate(-30, -130);
+            transformStack().rotateInDegrees(m_left_leg);
+            transformStack().translate(-5, -20);
+            // Draw the left leg
+            transformStack().pushMatrix(); 
+                m_gl_state.setColor(1.0, 1.0, 0.0);
+                transformStack().rotateInDegrees(-10);
+                transformStack().scale(LEG_WIDTH, LEG_LENGTH);
+                m_unit_square.draw();        
+            transformStack().popMatrix();
+
+            // Draw the left foot
+            transformStack().pushMatrix();
+                m_gl_state.setColor(1.0, 1.0, 0.0);
+                transformStack().translate(0, -22);
+                transformStack().rotateInDegrees(m_left_foot);
+                transformStack().scale(FOOT_WIDTH, FOOT_LENGTH);
+                transformStack().translate(0, -0.4);
+                m_unit_square.draw();
+            transformStack().popMatrix();
+
+            // Draw the left leg-foot screw
+            transformStack().pushMatrix(); 
+                m_gl_state.setColor(0.0, 0.0, 1.0);
+                transformStack().translate(0, -22);
+                transformStack().scale(SCREW_RAD, SCREW_RAD);
+                m_unit_circle.draw();
+            transformStack().popMatrix();
+        transformStack().popMatrix();
+        
+        // Draw the right leg
+        transformStack().pushMatrix();
+            transformStack().translate(40, -135);
+            transformStack().rotateInDegrees(m_right_leg);
+            transformStack().translate(2, -20);
+            // Draw the right leg
+            transformStack().pushMatrix(); 
+                m_gl_state.setColor(1.0, 1.0, 0.0);
+                transformStack().rotateInDegrees(15);
+                transformStack().scale(LEG_WIDTH, LEG_LENGTH);
+                m_unit_square.draw();        
+            transformStack().popMatrix();
+
+            // Draw the right foot
+            transformStack().pushMatrix();
+                m_gl_state.setColor(1.0, 1.0, 0.0);
+                transformStack().translate(10, -22);
+                transformStack().rotateInDegrees(m_right_foot);
+                transformStack().scale(FOOT_WIDTH, FOOT_LENGTH);
+                transformStack().translate(0, -0.4);
+                m_unit_square.draw();
+            transformStack().popMatrix();
+
+            // Draw the right leg-foot screw
+            transformStack().pushMatrix(); 
+                m_gl_state.setColor(0.0, 0.0, 1.0);
+                transformStack().translate(10, -22);
+                transformStack().scale(SCREW_RAD, SCREW_RAD);
+                m_unit_circle.draw();
+            transformStack().popMatrix();
+        transformStack().popMatrix();
+
+        //----------- Draw the screws! -----------
+        // Note the screws are translated using the translation of the pieces
+        // Draw the head-body screw
+        transformStack().pushMatrix(); 
+            m_gl_state.setColor(0.0, 0.0, 1.0);
+            transformStack().translate(0, (3.4-1.3)*HEAD_LENGTH);
+            transformStack().scale(SCREW_RAD, SCREW_RAD);
+            m_unit_circle.draw();
+        transformStack().popMatrix();
+
+        // Draw the arm-body screw
+        transformStack().pushMatrix(); 
+            m_gl_state.setColor(0.0, 0.0, 1.0);
+            transformStack().translate(15, 40);
+            transformStack().scale(SCREW_RAD, SCREW_RAD);
+            m_unit_circle.draw();
+        transformStack().popMatrix();
+
+        // Draw the left body-leg screw
+        transformStack().pushMatrix(); 
+            m_gl_state.setColor(0.0, 0.0, 1.0);
+            transformStack().translate(-30, -130);
+            transformStack().scale(SCREW_RAD, SCREW_RAD);
+            m_unit_circle.draw();
+        transformStack().popMatrix();
+
+        // Draw the right body-leg screw
+        transformStack().pushMatrix(); 
+            m_gl_state.setColor(0.0, 0.0, 1.0);
+            transformStack().translate(40, -135);
+            transformStack().scale(SCREW_RAD, SCREW_RAD);
+            m_unit_circle.draw();
+        transformStack().popMatrix();
+
+    transformStack().popMatrix();
+
+    // Execute any GL functions that are in the queue just to be safe
+    glFlush();
+    checkForGLErrors();
+}
+
